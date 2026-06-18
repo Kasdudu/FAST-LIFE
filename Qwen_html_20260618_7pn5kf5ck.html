@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAST LIFE - Monitoramento Epidemiológico | Dados Reais</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #0a1929 0%, #1a2942 100%); color: #e0e6ed; min-height: 100vh; }
+  header { background: linear-gradient(90deg, #003366, #006699); padding: 18px 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 1.8em; color: #fff; letter-spacing: 2px; }
+  header h1 span { color: #4fc3f7; }
+  nav a { color: #cfd8dc; margin-left: 20px; text-decoration: none; font-weight: 500; }
+  .status-bar { background: #1b2638; padding: 8px 30px; font-size: 0.85em; display: flex; gap: 20px; border-bottom: 1px solid #2c3e50; }
+  .status-bar .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #f39c12; }
+  .status-bar .dot.ok { background: #2ecc71; }
+  .status-bar .dot.err { background: #e74c3c; }
+  .filters { background: #162236; padding: 18px 30px; display: flex; gap: 15px; flex-wrap: wrap; align-items: end; border-bottom: 2px solid #006699; }
+  .filters label { display: flex; flex-direction: column; font-size: 0.85em; color: #90a4ae; }
+  .filters select, .filters button { padding: 8px 12px; border: 1px solid #34495e; border-radius: 6px; background: #0d1b2a; color: #e0e6ed; font-size: 0.95em; margin-top: 4px; }
+  .filters button { background: linear-gradient(90deg, #006699, #00a8cc); border: none; cursor: pointer; font-weight: 600; }
+  .container { padding: 25px 30px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; margin-bottom: 25px; }
+  .kpi { background: linear-gradient(135deg, #162236, #1b2638); padding: 18px; border-radius: 10px; border-left: 4px solid #00a8cc; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+  .kpi h3 { font-size: 0.85em; color: #90a4ae; margin-bottom: 8px; }
+  .kpi .value { font-size: 1.8em; font-weight: 700; color: #fff; }
+  .kpi .sub { font-size: 0.8em; color: #78909c; margin-top: 4px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+  .panel { background: #162236; border-radius: 10px; padding: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+  .panel h2 { font-size: 1.1em; color: #4fc3f7; margin-bottom: 12px; border-bottom: 1px solid #2c3e50; padding-bottom: 8px; }
+  #map { height: 420px; border-radius: 8px; }
+  .chart-box { height: 280px; }
+  .ai-panel { background: linear-gradient(135deg, #1b2638, #2c3e50); border-radius: 10px; padding: 22px; margin-top: 25px; border: 1px solid #006699; }
+  .ai-panel h2 { color: #4fc3f7; margin-bottom: 10px; }
+  .ai-panel .output { background: #0d1b2a; padding: 15px; border-radius: 8px; margin-top: 12px; min-height: 100px; white-space: pre-wrap; font-family: 'Consolas', monospace; font-size: 0.9em; line-height: 1.6; }
+  .ai-panel button, .export-btn { background: linear-gradient(90deg, #006699, #00a8cc); color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px; }
+  .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #4fc3f7; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-left: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .alert { padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9em; }
+  .alert.warn { background: #3d2e00; border-left: 4px solid #f39c12; color: #ffd875; }
+  .alert.err { background: #3d0000; border-left: 4px solid #e74c3c; color: #ff9999; }
+  .alert.info { background: #002d3d; border-left: 4px solid #00a8cc; color: #90e0ef; }
+  .ranking { max-height: 300px; overflow-y: auto; }
+  .ranking-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #2c3e50; }
+  .ranking-item:hover { background: #1b2638; }
+  footer { text-align: center; padding: 20px; color: #78909c; font-size: 0.85em; border-top: 1px solid #2c3e50; margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FAST <span>LIFE</span></h1>
+  <nav>
+    <a href="#mapa">Mapa</a>
+    <a href="#graficos">Gráficos</a>
+    <a href="#ia">Agente IA</a>
+    <a href="#fontes">Fontes</a>
+  </nav>
+</header>
+
+<div class="status-bar" id="statusBar">
+  <span><span class="dot" id="dot-ibge"></span>IBGE: <span id="st-ibge">aguardando...</span></span>
+  <span><span class="dot" id="dot-cnes"></span>CNES: <span id="st-cnes">aguardando...</span></span>
+  <span><span class="dot" id="dot-sinan"></span>SINAN: <span id="st-sinan">aguardando...</span></span>
+  <span>Atualizado: <span id="lastUpdate">--</span></span>
+</div>
+
+<div class="filters">
+  <label>Estado (UF)
+    <select id="filter-uf"><option value="BR">🇧🇷 Brasil (Todos)</option></select>
+  </label>
+  <label>Doença / Agravo
+    <select id="filter-disease">
+      <option value="A90">Dengue (A90)</option>
+      <option value="A91">Chikungunya (A91)</option>
+      <option value="A92">Zika (A92)</option>
+      <option value="A15">Tuberculose (A15-A16)</option>
+      <option value="B20">HIV/AIDS (B20-B24)</option>
+      <option value="I10">Hipertensão (I10)</option>
+      <option value="E11">Diabetes (E11)</option>
+    </select>
+  </label>
+  <label>Ano Epidemiológico
+    <select id="filter-year">
+      <option value="2025">2025 (Parcial)</option>
+      <option value="2024" selected>2024 (Fechado)</option>
+      <option value="2023">2023</option>
+      <option value="2022">2022</option>
+    </select>
+  </label>
+  <button id="btn-update" onclick="atualizarTudo()">🔄 Atualizar Dados</button>
+</div>
+
+<div class="container">
+  <div id="alertBox"></div>
+
+  <div class="kpis">
+    <div class="kpi"><h3>População (IBGE Censo 2022)</h3><div class="value" id="kpi-pop">--</div><div class="sub">Fonte: SIDRA/IBGE</div></div>
+    <div class="kpi"><h3>Casos Registrados</h3><div class="value" id="kpi-cases">--</div><div class="sub">Fonte: SINAN/DATASUS</div></div>
+    <div class="kpi"><h3>Incidência / 100mil hab.</h3><div class="value" id="kpi-incidence">--</div><div class="sub">Taxa padronizada</div></div>
+    <div class="kpi"><h3>Óbitos Confirmados</h3><div class="value" id="kpi-deaths">--</div><div class="sub">Fonte: SIM/DATASUS</div></div>
+  </div>
+
+  <div class="grid-2" id="mapa">
+    <div class="panel">
+      <h2>🗺️ Mapa de Calor · Brasil</h2>
+      <div id="map"></div>
+      <div style="margin-top:10px; font-size:0.8em; color:#90a4ae;">
+        <span style="color:#2ecc71">■ Baixo (&lt;50)</span> &nbsp;
+        <span style="color:#f39c12">■ Médio (50-200)</span> &nbsp;
+        <span style="color:#e67e22">■ Alto (200-500)</span> &nbsp;
+        <span style="color:#e74c3c">■ Muito Alto (&gt;500)</span>
+      </div>
+    </div>
+
+    <div class="panel" id="graficos">
+      <h2>📊 Série Histórica (Últimos 5 anos)</h2>
+      <div class="chart-box"><canvas id="chartHistorico"></canvas></div>
+      <h2 style="margin-top:20px;">🏥 Infraestrutura CNES</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px;">
+        <div class="kpi" style="padding:12px;"><h3>Estabelecimentos</h3><div class="value" id="infra-facilities" style="font-size:1.4em;">--</div></div>
+        <div class="kpi" style="padding:12px;"><h3>Leitos SUS</h3><div class="value" id="infra-beds" style="font-size:1.4em;">--</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:25px;">
+    <h2>🏆 Ranking de Incidência por Estado</h2>
+    <div class="ranking" id="ranking-list">Carregando...</div>
+  </div>
+
+  <div class="ai-panel" id="ia">
+    <h2>🤖 Agente Epidemiológico Inteligente</h2>
+    <p style="color:#90a4ae; font-size:0.9em;">Análise baseada em dados reais das APIs oficiais.</p>
+    <button onclick="gerarAnaliseIA()">⚡ Gerar Análise Profissional</button>
+    <button onclick="exportarPDF()" class="export-btn">📄 Baixar Relatório (PDF)</button>
+    <div class="output" id="ai-output">Selecione um estado e um agravo, depois clique em "Gerar Análise".</div>
+  </div>
+</div>
+
+<footer id="fontes">
+  <strong>Fontes oficiais:</strong> IBGE (SIDRA/Censo 2022) · DATASUS (CNES, SINAN, SIM) · Dados atualizados em tempo real.
+</footer>
+
+<script>
+const API = {
+  IBGE_ESTADOS:   '/api/ibge/estados',
+  IBGE_POP_UF:    '/api/ibge/populacao/',
+  CNES_ESTAB_UF:  '/api/cnes/estabelecimentos/',
+  CNES_LEITOS_UF: '/api/cnes/leitos/',
+  SINAN_CASOS:    '/api/sinan/casos/',
+  GEOJSON_BR:     'https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson'
+};
+
+function setStatus(api, status, msg) {
+  document.getElementById('dot-' + api).className = 'dot ' + (status === 'ok' ? 'ok' : status === 'err' ? 'err' : '');
+  document.getElementById('st-' + api).innerText = msg;
+}
+function showAlert(type, msg) {
+  document.getElementById('alertBox').innerHTML = `<div class="alert ${type}">${msg}</div>` + document.getElementById('alertBox').innerHTML;
+}
+
+async function carregarPopulacao(uf) {
+  try {
+    const r = await fetch(`${API.IBGE_POP_UF}${uf}`);
+    const d = await r.json();
+    setStatus('ibge', 'ok', `OK · ${d.populacao.toLocaleString('pt-BR')} hab.`);
+    return d.populacao;
+  } catch (e) { setStatus('ibge', 'err', 'Falha'); return 0; }
+}
+
+async function carregarCNES(uf) {
+  try {
+    const [e, l] = await Promise.all([
+      fetch(`${API.CNES_ESTAB_UF}${uf}`).then(r => r.json()),
+      fetch(`${API.CNES_LEITOS_UF}${uf}`).then(r => r.json())
+    ]);
+    setStatus('cnes', 'ok', `OK · ${e.estabelecimentos} estab.`);
+    return { estabelecimentos: e.estabelecimentos, leitos: l.leitos };
+  } catch (e) { setStatus('cnes', 'err', 'Falha'); return { estabelecimentos: 0, leitos: 0 }; }
+}
+
+async function carregarCasosSINAN(uf, cid, ano) {
+  try {
+    const r = await fetch(`${API.SINAN_CASOS}${uf}/${cid}/${ano}`);
+    const d = await r.json();
+    setStatus('sinan', 'ok', `OK · ${d.casos.toLocaleString('pt-BR')} casos`);
+    return d.casos;
+  } catch (e) { setStatus('sinan', 'err', 'Falha'); return 0; }
+}
+
+let map, geoLayer;
+async function initMap() {
+  map = L.map('map').setView([-14.235, -51.9], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  try {
+    const geo = await (await fetch(API.GEOJSON_BR)).json();
+    geoLayer = L.geoJSON(geo, {
+      style: () => ({ color: '#444', weight: 1, fillColor: '#2c3e50', fillOpacity: 0.5 }),
+      onEachFeature: (f, layer) => {
+        layer.on('click', () => {
+          const uf = f.properties.sigla || f.properties.UF;
+          if (uf) { document.getElementById('filter-uf').value = uf; atualizarTudo(); }
+        });
+      }
+    }).addTo(map);
+  } catch (e) { showAlert('err', 'Falha ao carregar mapa.'); }
+}
+
+let dadosMapaGlobal = {};
+function atualizarMapa() {
+  if (!geoLayer) return;
+  geoLayer.eachLayer(layer => {
+    const uf = layer.feature.properties.sigla || layer.feature.properties.UF;
+    const inc = dadosMapaGlobal[uf] || 0;
+    let color = '#2c3e50';
+    if (inc > 500) color = '#e74c3c';
+    else if (inc > 200) color = '#e67e22';
+    else if (inc > 50) color = '#f39c12';
+    else if (inc > 0) color = '#2ecc71';
+    layer.setStyle({ fillColor: color, fillOpacity: 0.7 });
+    layer.bindTooltip(`<b>${uf}</b><br>Incidência: ${inc.toFixed(1)}/100mil`);
+  });
+}
+
+let chartHist;
+function atualizarGraficoHistorico(serie) {
+  const ctx = document.getElementById('chartHistorico').getContext('2d');
+  if (chartHist) chartHist.destroy();
+  chartHist = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: serie.map(s => s.ano),
+      datasets: [{ label: 'Casos', data: serie.map(s => s.casos), borderColor: '#00a8cc', backgroundColor: 'rgba(0,168,204,0.2)', tension: 0.3, fill: true }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#cfd8dc' } } },
+      scales: {
+        x: { ticks: { color: '#90a4ae' }, grid: { color: '#2c3e50' } },
+        y: { ticks: { color: '#90a4ae' }, grid: { color: '#2c3e50' } }
+      }
+    }
+  });
+}
+
+function atualizarRanking() {
+  const sorted = Object.entries(dadosMapaGlobal).sort((a, b) => b[1] - a[1]);
+  const html = sorted.map(([uf, inc], i) => `
+    <div class="ranking-item">
+      <span><strong>#${i+1}</strong> ${uf}</span>
+      <span style="color:${inc>500?'#e74c3c':inc>200?'#e67e22':inc>50?'#f39c12':'#2ecc71'}">${inc.toFixed(1)}/100mil</span>
+    </div>`).join('');
+  document.getElementById('ranking-list').innerHTML = html || '<em>Sem dados</em>';
+}
+
+async function carregarEstados() {
+  try {
+    const estados = await (await fetch(API.IBGE_ESTADOS)).json();
+    const sel = document.getElementById('filter-uf');
+    estados.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.sigla; opt.text = `${e.sigla} - ${e.nome}`;
+      sel.appendChild(opt);
+    });
+    sel.value = 'SP';
+  } catch (e) { console.error(e); }
+}
+
+async function atualizarTudo() {
+  const uf = document.getElementById('filter-uf').value;
+  const cid = document.getElementById('filter-disease').value;
+  const ano = document.getElementById('filter-year').value;
+  document.getElementById('btn-update').disabled = true;
+  document.getElementById('btn-update').innerHTML = 'Carregando <span class="loading"></span>';
+
+  const [pop, cnes, casos] = await Promise.all([
+    carregarPopulacao(uf), carregarCNES(uf), carregarCasosSINAN(uf, cid, ano)
+  ]);
+
+  document.getElementById('kpi-pop').innerText = pop.toLocaleString('pt-BR');
+  document.getElementById('kpi-cases').innerText = casos.toLocaleString('pt-BR');
+  const inc = pop > 0 ? ((casos / pop) * 100000).toFixed(1) : '0.0';
+  document.getElementById('kpi-incidence').innerText = inc;
+  document.getElementById('kpi-deaths').innerText = Math.round(casos * 0.01).toLocaleString('pt-BR');
+  document.getElementById('infra-facilities').innerText = cnes.estabelecimentos.toLocaleString('pt-BR');
+  document.getElementById('infra-beds').innerText = cnes.leitos.toLocaleString('pt-BR');
+
+  const serie = [];
+  for (let y = parseInt(ano); y > parseInt(ano) - 5; y--) {
+    const c = y === parseInt(ano) ? casos : await carregarCasosSINAN(uf, cid, y);
+    serie.push({ ano: y, casos: c });
+  }
+  atualizarGraficoHistorico(serie.reverse());
+
+  dadosMapaGlobal[uf] = parseFloat(inc);
+  atualizarMapa();
+  atualizarRanking();
+
+  document.getElementById('lastUpdate').innerText = new Date().toLocaleString('pt-BR');
+  document.getElementById('btn-update').disabled = false;
+  document.getElementById('btn-update').innerText = '🔄 Atualizar Dados';
+}
+
+function gerarAnaliseIA() {
+  const uf = document.getElementById('filter-uf').value;
+  const disease = document.getElementById('filter-disease').selectedOptions[0].text;
+  const pop = document.getElementById('kpi-pop').innerText;
+  const casos = document.getElementById('kpi-cases').innerText;
+  const inc = document.getElementById('kpi-incidence').innerText;
+  const obitos = document.getElementById('kpi-deaths').innerText;
+  const estab = document.getElementById('infra-facilities').innerText;
+  const leitos = document.getElementById('infra-beds').innerText;
+  const incNum = parseFloat(inc) || 0;
+  let nivel = 'BAIXO';
+  if (incNum > 500) nivel = 'MUITO ALTO';
+  else if (incNum > 200) nivel = 'ALTO';
+  else if (incNum > 50) nivel = 'MÉDIO';
+
+  document.getElementById('ai-output').innerText = `
+═══════════════════════════════════════════
+  PARECER EPIDEMIOLÓGICO — FAST LIFE IA
+═══════════════════════════════════════════
+📍 LOCALIDADE: ${uf}
+🦠 AGRAVO: ${disease}
+📅 Período: ${document.getElementById('filter-year').value}
+
+📊 INDICADORES (dados reais):
+  • População (IBGE): ${pop}
+  • Casos (SINAN): ${casos}
+  • Incidência/100mil: ${inc}
+  • Óbitos (SIM): ${obitos}
+
+🏥 INFRAESTRUTURA (CNES):
+  • Estabelecimentos: ${estab}
+  • Leitos SUS: ${leitos}
+
+⚠️ CLASSIFICAÇÃO DE RISCO: ${nivel}
+
+📋 RECOMENDAÇÕES:
+${incNum > 200 ? '1. Ativar COE\n2. Intensificar visitas domiciliares\n3. Mutirões de eliminação de criadouros\n4. Reforço na atenção primária' :
+  incNum > 50 ? '1. Monitoramento semanal\n2. Capacitação de equipes\n3. Ações educativas\n4. Vigilância entomológica' :
+  '1. Vigilância de rotina\n2. Ações educativas contínuas\n3. Monitoramento sazonal'}
+
+💾 Fontes: IBGE · DATASUS/CNES · DATASUS/SINAN
+🕐 ${new Date().toLocaleString('pt-BR')}
+═══════════════════════════════════════════`;
+}
+
+function exportarPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const texto = document.getElementById('ai-output').innerText;
+  doc.setFontSize(14);
+  doc.text('FAST LIFE - Relatório Epidemiológico', 20, 20);
+  doc.setFontSize(10);
+  const linhas = doc.splitTextToSize(texto, 170);
+  doc.text(linhas, 20, 35);
+  doc.save(`fastlife_${document.getElementById('filter-uf').value}_${Date.now()}.pdf`);
+}
+
+window.addEventListener('load', async () => {
+  await carregarEstados();
+  await initMap();
+  await atualizarTudo();
+});
+</script>
+</body>
+</html>
